@@ -20,7 +20,7 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
       - run: npm install -g npm@11
-      - run: node --test test/
+      - run: node --test test/*.test.mjs
       - name: tag matches package.json
         run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
       - run: npm publish --provenance --access public
