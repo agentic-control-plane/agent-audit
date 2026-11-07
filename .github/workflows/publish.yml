@@ -1,0 +1,26 @@
+# Publishes to npm when a v* tag is pushed, via npm trusted publishing
+# (GitHub OIDC): no token, no OTP, and a provenance attestation.
+# One-time setup on npmjs.com after the first manual publish:
+#   package → Settings → Trusted Publisher → GitHub Actions →
+#   repository agentic-control-plane/agent-audit, workflow publish.yml
+name: publish
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@11
+      - run: node --test test/
+      - name: tag matches package.json
+        run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
+      - run: npm publish --provenance --access public
