@@ -9,26 +9,31 @@ import { createInterface } from "node:readline";
 import { join } from "node:path";
 
 export function claudeFiles(home, sinceMs) {
+  // projects/<project>/<session>.jsonl, and subagents one level down:
+  // projects/<project>/<session>/subagents/agent-*.jsonl
   const root = join(home, ".claude", "projects");
   const out = [];
-  let dirs = [];
-  try { dirs = readdirSync(root); } catch { return out; }
-  for (const d of dirs) {
-    let files = [];
-    try { files = readdirSync(join(root, d)); } catch { continue; }
-    for (const f of files) {
-      if (!f.endsWith(".jsonl")) continue;
-      const p = join(root, d, f);
-      try { if (statSync(p).mtimeMs >= sinceMs) out.push(p); } catch { /* vanished */ }
+  const walk = (dir, depth) => {
+    let entries = [];
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const p = join(dir, e.name);
+      if (e.isDirectory() && depth < 3) walk(p, depth + 1);
+      else if (e.isFile() && e.name.endsWith(".jsonl")) {
+        try { if (statSync(p).mtimeMs >= sinceMs) out.push(p); } catch { /* vanished */ }
+      }
     }
-  }
+  };
+  walk(root, 0);
   return out;
 }
 
 /** Yields { kind: "call" | "session", … } events from one file. */
 export async function* readClaude(path, sinceMs) {
   const rl = createInterface({ input: createReadStream(path, { encoding: "utf8" }), crlfDelay: Infinity });
-  let session = null;
+  // A subagent file belongs to its parent session (the directory name).
+  const sub = /[\\/]([^\\/]+)[\\/]subagents[\\/][^\\/]+\.jsonl$/.exec(path);
+  let session = sub ? sub[1] : null;
   let cwd = null;
   let bypass = false;
   let cost = null;
@@ -46,8 +51,9 @@ export async function* readClaude(path, sinceMs) {
     if (ts && ts < sinceMs) continue;
     for (const b of o.message.content) {
       if (b?.type !== "tool_use") continue;
-      yield { kind: "call", harness: "Claude Code", session, cwd, ts, tool: String(b.name ?? ""), input: b.input ?? {}, subagent: o.isSidechain === true };
+      yield { kind: "call", harness: "Claude Code", session: session ?? path, cwd, ts, tool: String(b.name ?? ""), input: b.input ?? {}, subagent: Boolean(sub) || o.isSidechain === true };
     }
   }
-  if (session) yield { kind: "session", harness: "Claude Code", session, cwd, bypass, cost };
+  // Subagent files carry no cost-state of their own; the parent does.
+  yield { kind: "session", harness: "Claude Code", session: session ?? path, cwd, bypass, cost: sub ? null : cost };
 }

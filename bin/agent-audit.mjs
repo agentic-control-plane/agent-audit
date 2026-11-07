@@ -29,7 +29,11 @@ for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   const next = () => argv[++i];
   if (a === "-h" || a === "--help") { process.stdout.write(HELP); process.exit(0); }
-  else if (a === "--days") opts.days = Math.max(1, Number(next()) || 30);
+  else if (a === "--days") {
+    const v = Number(next());
+    if (!Number.isFinite(v) || v <= 0) { process.stderr.write("--days needs a positive number\n"); process.exit(2); }
+    opts.days = v;
+  }
   else if (a === "--harness") opts.harnesses.push(next());
   else if (a === "--email") opts.emails.push(next());
   else if (a === "--html") opts.html = next();

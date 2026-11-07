@@ -2,7 +2,7 @@
 // pre-tool check could have stopped; the floors come straight from ACP's
 // open decision engine so a finding here is exactly a call ACP holds.
 
-import { hardlineFloor, destructiveFloor } from "./vendor/decide.mjs";
+import { hardlineFloor, destructiveFloor, stripDataHeredocs } from "./vendor/decide.mjs";
 import { detectIdentityEgress, identityTokens } from "./vendor/identity.mjs";
 import { classifyHost, isInternalHostClass, displayHost } from "./vendor/net.mjs";
 import { secretTypes } from "./redact.mjs";
@@ -19,14 +19,24 @@ export const CATEGORIES = [
   { id: "push", title: "Pushes to a git remote", severity: 1, blurb: "every git push the agent ran" },
 ];
 
+/** Commands longer than this are scanned on their first part only. */
+const MAX_CMD = 50_000;
+
 const SHELL = new Set(["Bash", "run_terminal_cmd", "shell"]);
 const READ_TOOLS = new Set(["Read", "read_file", "View", "view"]);
 const WRITE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "create_file", "edit_file", "NotebookEdit"]);
 
-const CREDENTIAL_PATH_RE = /(?:^|[\s/"'=])(?:\.env(?:\.(?!example\b|sample\b|template\b|dist\b)[\w.-]+)?|\.npmrc|\.pypirc|\.netrc|\.pgpass|\.git-credentials|\.aws\/credentials|\.aws\/config|\.ssh\/id_[a-z0-9]+(?!\.pub)|\.kube\/config|\.docker\/config\.json|\.config\/gcloud\/[\w./-]*credentials[\w.-]*|\.config\/gh\/hosts\.yml|[\w.-]+\.pem|[\w.-]+\.p12|[\w.-]+\.pfx|credentials\.json|service[-_]account[\w-]*\.json)(?=$|[\s"'`;|&)])/;
+const CREDENTIAL_PATH_RE = /(?:^|[\s/"'=])(?:\.env(?:\.(?!example\b|sample\b|template\b|dist\b)[\w.-]+)?|\.npmrc|\.pypirc|\.netrc|\.pgpass|\.git-credentials|\.aws\/credentials|\.aws\/config|\.ssh\/id_[a-z0-9]+(?!\.pub)|\.kube\/config|\.docker\/config\.json|\.config\/gcloud\/[\w./-]*credentials[\w.-]*|\.config\/gh\/hosts\.yml|[\w.-]*(?:key|private|id_)[\w.-]*\.pem|[\w.-]+\.p12|[\w.-]+\.pfx|[\w.-]+\.key|(?:gcp|google|firebase|aws)?[-_]?credentials\.json|service[-_]account[\w-]*\.json)(?=$|[\s"'`;|&)])/;
+const NOT_A_SECRET_RE = /\.(?:example|sample|template|dist|tmpl|defaults?)(?=$|[\s"'`;|&)])/;
+function credentialIn(text) {
+  const m = CREDENTIAL_PATH_RE.exec(text);
+  if (!m) return false;
+  const tail = text.slice(m.index, m.index + m[0].length + 40);
+  return !NOT_A_SECRET_RE.test(tail.split(/[\s"'`;|&)]/).filter(Boolean)[0] ?? "");
+}
 const DUMP_BINS = new Set(["cat", "head", "tail", "less", "more", "bat", "grep", "rg", "awk", "sed", "cp", "scp", "base64", "xxd", "strings", "source", ".", "open", "code", "vim", "nano"]);
 const KEYCHAIN_RE = /\bsecurity\s+find-(?:generic|internet)-password\b[^|;&\n]*\s-w\b|\bgcloud\s+auth\s+print-access-token\b|\baws\s+configure\s+get\s+\S*secret/;
-const SENSITIVE_WRITE_RE = /(?:^|\/)(?:\.(?:zshrc|bashrc|bash_profile|profile|zprofile|zshenv)|\.ssh\/(?:config|authorized_keys)|\.github\/workflows\/[^/]+\.ya?ml|\.git\/hooks\/[^/]+|\.gitlab-ci\.yml|crontab)$/;
+const SENSITIVE_WRITE_RE = /(?:^|\/)(?:\.(?:zshrc|bashrc|bash_profile|profile|zprofile|zshenv|bash_login)|\.ssh\/(?:config|authorized_keys|rc)|\.git\/hooks\/[^/]+|crontab|Library\/LaunchAgents\/[^/]+\.plist|\.config\/autostart\/[^/]+)$/;
 const UPLOAD_RE = /\bcurl\b[^|;&\n]*(?:\s-(?:d|F|T)\s*@|\s--data(?:-binary|-raw)?[=\s]+@|\s--upload-file\b|\s-F\s+\S*=@)|\b(?:scp|rsync)\b[^|;&\n]*\s[\w.-]+@?[\w.-]+:\S|\bnc\s+[\w.-]+\s+\d+\s*<|\bgh\s+gist\s+create\b/;
 const PUSH_RE = /\bgit\b(?:\s+-[cC]\s+\S+)*\s+push\b/;
 
@@ -35,9 +45,10 @@ const PUSH_RE = /\bgit\b(?:\s+-[cC]\s+\S+)*\s+push\b/;
  *  `curl | sh` inside an issue body or a test fixture is not a finding.
  *  Precision beats recall in a report people screenshot. */
 export function executableText(cmd) {
-  let t = String(cmd ?? "");
-  t = t.replace(/<<-?\s*(['"]?)([A-Za-z_][\w-]*)\1[^\n]*\n[\s\S]*?\n\s*\2(?=\s|$|[;&|)])/g, "<<HEREDOC");
-  t = t.replace(/(--(?:body|title|notes|message|description|subject|comment|text|msg)|-[mb])(?:=|\s+)(?:"(?:\\.|[^"\\])*"|'[^']*'|\$\([^)]*\)|\S+)/g, "$1 MSG");
+  // Data heredocs (cat > file <<EOF …) are content; heredocs fed to a shell
+  // or SQL client (bash <<EOF, psql <<SQL) stay, so their commands count.
+  let t = stripDataHeredocs(String(cmd ?? "").slice(0, MAX_CMD));
+  t = t.replace(/(--(?:body|title|notes|message|description|subject|comment|text|msg)|-[mb])(?:=|\s+)(?:"(?:[^"\\]|\\.){0,20000}"|'[^']{0,20000}'|\$\([^)]{0,20000}\)|\S+)/g, "$1 MSG");
   return t;
 }
 
@@ -52,6 +63,28 @@ function firstWord(seg) {
   while (i < toks.length && (/^[A-Za-z_]\w*=/.test(toks[i]) || /^(?:sudo|env|command|exec|nohup|time)$/.test(toks[i]))) i++;
   const w = toks[i] ?? "";
   return w.slice(w.lastIndexOf("/") + 1);
+}
+
+/** The engine reads the whole command line; a report people screenshot
+ *  needs the matching command to be the one actually run. A force-push
+ *  needs a git segment that pushes with force; a pipe-to-shell needs a
+ *  curl/wget segment piped into a shell. `grep 'git push --force'` and
+ *  `echo "curl x | sh"` are not findings. */
+function backedBySegment(reason, run) {
+  if (/force-push/.test(reason)) {
+    return segments(run).some((seg) => firstWord(seg) === "git" && /\bpush\b/.test(seg) && /(?:\s--force(?!-with-lease|-if-includes)\b|\s-[a-eg-zA-Z]*f[a-zA-Z]*(?=\s|$)|\s\+[^\s:]+)/.test(seg));
+  }
+  if (/pipes a remote download/.test(reason)) {
+    const parts = String(run).split(/\n|;|&&|\|\|/);
+    return parts.some((p) => {
+      const piped = p.split("|").map((x) => x.trim());
+      for (let i = 0; i + 1 < piped.length; i++) {
+        if (/^(?:curl|wget)$/.test(firstWord(piped[i])) && /^(?:sudo\s+)?(?:\S*\/)?(?:ba|z|da|k)?sh\b/.test(piped[i + 1])) return true;
+      }
+      return /(?:^|\s)(?:ba|z)?sh\s+(?:-\w+\s+)*(?:-c\s+["']?\$\(\s*(?:curl|wget)|<\s*<?\s*\(\s*(?:curl|wget))/.test(p);
+    });
+  }
+  return true;
 }
 
 function commandOf(ev) {
@@ -82,7 +115,7 @@ function hostsIn(text) {
  */
 export function findingsFor(ev, ctx) {
   const out = [];
-  const cmd = commandOf(ev);
+  const cmd = commandOf(ev).slice(0, MAX_CMD);
   const shellLike = SHELL.has(ev.tool) || (cmd && !READ_TOOLS.has(ev.tool) && !WRITE_TOOLS.has(ev.tool));
   const shellInput = { command: cmd };
 
@@ -93,8 +126,8 @@ export function findingsFor(ev, ctx) {
     if (hard) out.push({ category: "catastrophic", why: hard, example: cmd });
     const destr = hard ? null : destructiveFloor("Bash", runInput, { cwd: ev.cwd });
     // ACP records a variable-named rm without asking; so does this report.
-    if (destr && !/variable-named path/.test(destr)) out.push({ category: "destructive", why: destr.replace(/:\s.*$/, ""), example: cmd });
-    if (segments(run).some((seg) => DUMP_BINS.has(firstWord(seg)) && CREDENTIAL_PATH_RE.test(` ${seg}`))) {
+    if (destr && !/variable-named path/.test(destr) && backedBySegment(destr, run)) out.push({ category: "destructive", why: destr.replace(/:\s.*$/, ""), example: cmd });
+    if (segments(run).some((seg) => DUMP_BINS.has(firstWord(seg)) && credentialIn(` ${seg}`))) {
       out.push({ category: "credential-read", why: "read a credential file in the shell", example: cmd });
     }
     if (KEYCHAIN_RE.test(run)) out.push({ category: "credential-read", why: "pulled a secret from the keychain or a cloud CLI", example: cmd });
@@ -109,7 +142,7 @@ export function findingsFor(ev, ctx) {
 
   if (READ_TOOLS.has(ev.tool)) {
     const p = String(ev.input?.file_path ?? ev.input?.path ?? "");
-    if (p && CREDENTIAL_PATH_RE.test(` ${p}`)) out.push({ category: "credential-read", why: "read a credential file", example: p });
+    if (p && credentialIn(` ${p}`)) out.push({ category: "credential-read", why: "read a credential file", example: p });
   }
   if (WRITE_TOOLS.has(ev.tool)) {
     const p = String(ev.input?.file_path ?? ev.input?.path ?? "");

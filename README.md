@@ -41,12 +41,12 @@ It's read-only. It makes no network calls, needs no account and installs no hook
 | Credential files read | `.env`, SSH keys, `~/.aws/credentials`, `.npmrc`, keychain reads |
 | Local data sent out | `curl -d @file`, uploads, `scp` / `rsync` to a remote |
 | Your email sent to a site | your git email in a User-Agent, From header or contact field |
-| Sensitive files changed | shell startup files, SSH config, CI workflows, git hooks |
+| Sensitive files changed | shell startup files, SSH config and authorized_keys, git hooks, crontab, login items |
 | Sessions with no approval prompts | Claude Code bypass mode, Codex never-ask with a full-access sandbox |
 
 The destructive and catastrophic rules are the same open rules [Agentic Control Plane](https://agenticcontrolplane.com) enforces before a call runs. They're vendored from [acp-install](https://github.com/agentic-control-plane/acp-install). A finding here is a call that check would have held for your approval.
 
-It skips text that's only written or described, not run. That covers a `curl | sh` inside an issue body, a heredoc writing a test file, or a commit message. Placeholder keys like `sk-test-xxxx` aren't reported.
+It skips text that's only written, searched for or described, not run. That covers a `curl | sh` inside an issue body, a `grep` for `git push --force`, a heredoc writing a test file, or a commit message. A heredoc fed to a shell or a SQL client is still checked. Placeholder keys like `sk-test-xxxx` aren't reported.
 
 ## Options
 
@@ -62,9 +62,14 @@ It skips text that's only written or described, not run. That covers a `curl | s
 
 ## Privacy
 
-- Examples are redacted by default. Keys and tokens become `[GitHub token]`, email addresses become `[email]`, and your home path becomes `~`.
-- The report is safe to screenshot. The HTML export is always redacted.
+- Examples are redacted by default, and the redaction errs toward hiding too much:
+  - Known key shapes become labels like `[GitHub token]`.
+  - Passwords in `-u`, `-p`, `--password` and URL userinfo, `NAME_TOKEN=`-style values, and long opaque strings become `[redacted]`.
+  - Email addresses become `[email]`, usernames become `[user]`, and home paths become `~`.
+  - Intranet and `.local` hostnames are never listed.
+- The HTML export is always redacted.
 - `--raw` prints full commands to your own terminal only.
+- Redaction is pattern-based, so glance over a report before you post it.
 
 ## Coverage
 

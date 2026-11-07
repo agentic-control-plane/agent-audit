@@ -55,7 +55,7 @@ export async function* readCodex(path, sinceMs) {
   let session = null;
   let cwd = null;
   let bypass = false;
-  const call = (ts, tool, input, extra = {}) => ({ kind: "call", harness: "Codex", session, cwd, ts, tool, input, ...extra });
+  const call = (ts, tool, input, extra = {}) => ({ kind: "call", harness: "Codex", session: session ?? path, cwd, ts, tool, input, ...extra });
   for await (const line of rl) {
     if (!line || line[0] !== "{") continue;
     const o = parseJson(line);
@@ -81,6 +81,9 @@ export async function* readCodex(path, sinceMs) {
         const argv = a.command.map(String);
         const cmd = argv.length >= 3 && /(?:^|\/)(?:ba|z)?sh$/.test(argv[0]) && argv[1].startsWith("-") ? argv.slice(2).join(" ") : argv.join(" ");
         yield call(ts, "Bash", { command: cmd }, { cwd: workdir(a) ?? cwd });
+      } else if (name === "apply_patch") {
+        const patch = typeof a.input === "string" ? a.input : typeof a.patch === "string" ? a.patch : "";
+        for (const file_path of patchPaths(patch)) yield call(ts, "Edit", { file_path });
       } else yield call(ts, name, a);
     } else if (p.type === "local_shell_call") {
       const argv = Array.isArray(p.action?.command) ? p.action.command.map(String) : [];
@@ -96,5 +99,5 @@ export async function* readCodex(path, sinceMs) {
       } else yield call(ts, name, { input });
     }
   }
-  if (session) yield { kind: "session", harness: "Codex", session, cwd, bypass, cost: null };
+  yield { kind: "session", harness: "Codex", session: session ?? path, cwd, bypass, cost: null };
 }

@@ -74,7 +74,7 @@ test("finds each category across Claude Code and Codex", async () => {
   assert.equal(count(s, "secret-in-args"), 1);
   assert.equal(count(s, "identity"), 1);
   assert.equal(count(s, "upload"), 1);
-  assert.equal(count(s, "sensitive-write"), 2); // .zshrc, CI workflow via apply_patch
+  assert.equal(count(s, "sensitive-write"), 1); // .zshrc; CI workflow edits are normal work
   assert.equal(count(s, "unattended"), 2); // bypass mode + never/full-access
   assert.equal(count(s, "push"), 3); // CC force-push, CC feat push, Codex push -f
 });

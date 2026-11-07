@@ -22,7 +22,7 @@ export function summarise(scan, { raw = false, examples = 3 } = {}) {
       const text = raw ? String(f.example) : redact(f.example);
       if (seen.has(text)) continue;
       seen.add(text);
-      ex.push({ harness: f.harness, why: f.why, text, when: f.ts ? new Date(f.ts).toISOString().slice(0, 10) : null });
+      ex.push({ harness: f.harness, why: raw ? f.why : redact(f.why, { max: 90 }), text, when: f.ts ? new Date(f.ts).toISOString().slice(0, 10) : null });
       if (ex.length >= examples) break;
     }
     return { ...cat, count: items.length, sessions, examples: ex };
@@ -36,7 +36,7 @@ export function renderTerminal(s) {
   lines.push("");
   lines.push(bold(`  What your coding agents did in the last ${fmtDays(s.days)}`));
   const harnessLine = Object.entries(s.byHarness).map(([h, n]) => `${h} ${n.sessions} sessions`).join(" · ") || "no sessions found";
-  lines.push(dim(`  ${harnessLine} · ${s.calls.toLocaleString()} tool calls · ${s.shell.toLocaleString()} shell commands${s.cost ? ` · $${s.cost.toFixed(0)} spent` : ""}`));
+  lines.push(dim(`  ${harnessLine} · ${s.calls.toLocaleString()} tool calls · ${s.shell.toLocaleString()} shell commands${s.cost ? ` · $${s.cost.toFixed(0)} spent in those sessions` : ""}`));
   lines.push(dim(`  ${"─".repeat(w)}`));
   const flagged = s.categories.filter((cat) => cat.count > 0);
   for (const cat of s.categories) {
@@ -56,7 +56,7 @@ export function renderTerminal(s) {
   lines.push(dim(`  ${"─".repeat(w)}`));
   const serious = flagged.filter((cat) => cat.id === "catastrophic" || cat.id === "destructive").reduce((a, cat) => a + cat.count, 0);
   if (serious) {
-    lines.push(`  ${bold(String(serious))} calls here are ones a pre-tool check holds for your approval before they run.`);
+    lines.push(`  ${bold(String(serious))} of these are calls a pre-tool check stops, or holds for your approval, before they run.`);
     lines.push(dim("  To have them asked about next time, in every harness: https://agenticcontrolplane.com/getting-started"));
   } else {
     lines.push(green("  Nothing catastrophic or destructive. Nice."));
@@ -87,7 +87,7 @@ main{max-width:760px;margin:0 auto;padding:32px 16px}h1{font-size:24px;margin:0 
 footer{color:var(--mute);font-size:13px;margin-top:24px}a{color:inherit}
 </style></head><body><main>
 <h1>What your coding agents did in the last ${esc(fmtDays(s.days))}</h1>
-<p class="sub">${esc(Object.entries(s.byHarness).map(([h, n]) => `${h} ${n.sessions} sessions`).join(" · "))} · ${s.calls.toLocaleString()} tool calls · ${s.shell.toLocaleString()} shell commands${s.cost ? ` · $${s.cost.toFixed(0)} spent` : ""} · ${s.hostCount} hosts reached</p>
+<p class="sub">${esc(Object.entries(s.byHarness).map(([h, n]) => `${h} ${n.sessions} sessions`).join(" · "))} · ${s.calls.toLocaleString()} tool calls · ${s.shell.toLocaleString()} shell commands${s.cost ? ` · $${s.cost.toFixed(0)} spent in those sessions` : ""} · ${s.hostCount} hosts reached</p>
 ${rows}
 <footer>Generated locally by agent-audit. Examples are redacted. Covered: ${esc(s.covered.join(", "))}.<br>
 To have the risky ones asked about before they run, in every harness: <a href="https://agenticcontrolplane.com/getting-started">Agentic Control Plane</a>.</footer>
