@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { claudeFiles, readClaude } from "./sources/claude.mjs";
 import { codexFiles, readCodex } from "./sources/codex.mjs";
 import { findingsFor, hostsFor, tokensFor } from "./findings.mjs";
+import { piiIn } from "./pii.mjs";
 import { displayHost } from "./vendor/net.mjs";
 import { showableHost } from "./redact.mjs";
 
@@ -24,6 +25,9 @@ function gitEmail(home) {
   return null;
 }
 
+/** Distinct personal-data values kept per scan. */
+const MAX_PII = 10_000;
+
 export async function scan({ home = homedir(), days = 30, harnesses = Object.keys(SOURCES), emails = [] } = {}) {
   const sinceMs = Date.now() - days * 86_400_000;
   const allEmails = [...emails];
@@ -31,6 +35,8 @@ export async function scan({ home = homedir(), days = 30, harnesses = Object.key
   if (g) allEmails.push(g);
   const ctx = { tokens: tokensFor(allEmails) };
   const findings = [];
+  const own = new Set(allEmails.map((e) => String(e).toLowerCase()));
+  const seenPii = new Set();
   const hosts = new Map();
   const byHarness = {};
   let calls = 0, shell = 0, cost = 0;
@@ -52,6 +58,15 @@ export async function scan({ home = homedir(), days = 30, harnesses = Object.key
             rec.bypass ||= ev.bypass;
             if (typeof ev.cost === "number") rec.cost = Math.max(rec.cost ?? 0, ev.cost);
             rec.cwd ??= ev.cwd;
+            continue;
+          }
+          if (ev.kind === "text") {
+            for (const p of piiIn(ev.text, own)) {
+              // One finding per distinct value, however often it was read.
+              if (seenPii.has(p.key) || seenPii.size >= MAX_PII) continue;
+              seenPii.add(p.key);
+              findings.push({ category: "pii", why: `${p.label} in ${ev.where}`, example: p.masked, rank: p.rank, harness: ev.harness, session: ev.session, ts: ev.ts });
+            }
             continue;
           }
           rec.calls++;

@@ -7,7 +7,7 @@
 
 import { writeFileSync } from "node:fs";
 import { scan, SOURCES } from "../src/scan.mjs";
-import { summarise, renderTerminal, renderHtml } from "../src/report.mjs";
+import { summarise, renderTerminal, renderHtml, renderAgentNotes } from "../src/report.mjs";
 
 const HELP = `agent-audit — what did your coding agents actually do?
 
@@ -20,11 +20,12 @@ Usage: npx agent-audit [options]
   --json           print the summary as JSON
   --examples N     examples per finding (default 3)
   --raw            show examples unredacted (stays on your machine; don't screenshot)
+  --agent          add short notes for a coding agent relaying the report (automatic inside Claude Code)
   -h, --help       this help
 `;
 
 const argv = process.argv.slice(2);
-const opts = { days: 30, harnesses: [], emails: [], html: null, json: false, raw: false, examples: 3 };
+const opts = { days: 30, harnesses: [], emails: [], html: null, json: false, raw: false, examples: 3, agent: false };
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   const next = () => argv[++i];
@@ -39,6 +40,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === "--html") opts.html = next();
   else if (a === "--json") opts.json = true;
   else if (a === "--raw") opts.raw = true;
+  else if (a === "--agent") opts.agent = true;
   else if (a === "--examples") opts.examples = Math.max(0, Number(next()) || 0);
   else { process.stderr.write(`unknown option: ${a}\n\n${HELP}`); process.exit(2); }
 }
@@ -48,7 +50,12 @@ if (bad.length) { process.stderr.write(`unknown harness: ${bad.join(", ")}\n`); 
 const result = await scan({ days: opts.days, harnesses: opts.harnesses.length ? opts.harnesses : undefined, emails: opts.emails });
 const summary = summarise(result, { raw: opts.raw, examples: opts.examples });
 if (opts.json) process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
-else process.stdout.write(renderTerminal(summary) + "\n");
+else {
+  process.stdout.write(renderTerminal(summary) + "\n");
+  // Inside a coding agent the reader is the agent; tell it how to relay this.
+  const inAgent = opts.agent || Boolean(process.env.CLAUDECODE || process.env.AI_AGENT || process.env.CODEX_SANDBOX || process.env.CURSOR_AGENT);
+  if (inAgent) process.stdout.write(renderAgentNotes(summary) + "\n");
+}
 if (opts.html) {
   writeFileSync(opts.html, renderHtml(summarise(result, { raw: false, examples: opts.examples })));
   process.stderr.write(`HTML report written to ${opts.html} (redacted)\n`);

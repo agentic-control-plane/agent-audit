@@ -41,6 +41,24 @@ export function execCodeCommands(code) {
   return out;
 }
 
+/** The text a tool returned. `output` is a plain string, a JSON string
+ *  wrapping { output: "…" }, an object with content, or an array of parts. */
+export function outputTexts(output, depth = 0) {
+  if (typeof output === "string") {
+    if (depth < 2 && output[0] === "{") {
+      const inner = parseJson(output);
+      if (inner && typeof inner === "object") {
+        const got = outputTexts(inner.output ?? inner.content ?? inner.stdout, depth + 1);
+        if (got.length) return got;
+      }
+    }
+    return [output];
+  }
+  if (Array.isArray(output)) return output.flatMap((part) => (typeof part === "string" ? [part] : typeof part?.text === "string" ? [part.text] : []));
+  if (output && typeof output === "object") return outputTexts(output.content ?? output.output ?? output.text, depth + 1);
+  return [];
+}
+
 /** File paths touched by an apply_patch body. */
 export function patchPaths(patch) {
   const out = [];
@@ -72,6 +90,16 @@ export async function* readCodex(path, sinceMs) {
     const ts = Date.parse(o.timestamp ?? "") || 0;
     if (ts && ts < sinceMs) continue;
     const workdir = (a) => (a && typeof a.workdir === "string" ? a.workdir : undefined);
+    // What the model read: the prompt, and what each tool returned.
+    const text = (where, t) => ({ kind: "text", harness: "Codex", session: session ?? path, ts, where, text: t });
+    if (p.type === "message" && p.role === "user" && Array.isArray(p.content)) {
+      for (const part of p.content) if (typeof part?.text === "string") yield text("a prompt", part.text);
+      continue;
+    }
+    if (p.type === "function_call_output" || p.type === "custom_tool_call_output" || p.type === "local_shell_call_output") {
+      for (const t of outputTexts(p.output)) yield text("tool output", t);
+      continue;
+    }
     if (p.type === "function_call") {
       const a = parseJson(p.arguments) ?? {};
       const name = String(p.name ?? "");
