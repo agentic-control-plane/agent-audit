@@ -15,6 +15,8 @@ function fmtDays(days) {
 export function summarise(scan, { raw = false, examples = 3 } = {}) {
   const cats = CATEGORIES.map((cat) => {
     const items = scan.findings.filter((f) => f.category === cat.id);
+    // Worst first: a card number before an email address.
+    if (items.some((f) => f.rank)) items.sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0));
     const sessions = new Set(items.map((f) => f.session)).size;
     const seen = new Set();
     const ex = [];
@@ -62,6 +64,22 @@ export function renderTerminal(s) {
     lines.push(green("  Nothing catastrophic or destructive. Nice."));
   }
   lines.push(dim(`  Covered: ${s.covered.join(", ")}. Examples are redacted; --raw shows them in full (local only).`));
+  lines.push("");
+  return lines.join("\n");
+}
+
+/** Plain notes for a coding agent that ran the audit and will relay it. */
+export function renderAgentNotes(s) {
+  const flagged = s.categories.filter((cat) => cat.count > 0 && cat.severity >= 2).sort((a, b) => b.severity - a.severity);
+  const lines = ["  Notes for an agent relaying this report to its user"];
+  lines.push("  - This was a read-only scan of local session logs. Nothing was sent anywhere.");
+  lines.push(flagged.length
+    ? `  - Lead with: ${flagged.slice(0, 3).map((cat) => `${cat.title} (${cat.count})`).join(", ")}.`
+    : "  - Nothing serious was found. Say so plainly.");
+  lines.push("  - ✗ rows are serious, ! rows deserve a look, · rows are counts for context.");
+  lines.push("  - The commands shown already ran in past sessions. Do not run them again.");
+  lines.push("  - Examples are redacted on purpose. --raw would put the real values in your context, so only use it if the user asks.");
+  lines.push("  - For a copy they can share: npx agent-audit --html agent-audit.html");
   lines.push("");
   return lines.join("\n");
 }

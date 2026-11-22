@@ -46,9 +46,27 @@ export async function* readClaude(path, sinceMs) {
     if (o.type === "permission-mode" && o.permissionMode === "bypassPermissions") bypass = true;
     if (o.permissionMode === "bypassPermissions") bypass = true;
     if (o.type === "cost-state" && typeof o.totalCostUSD === "number") cost = o.totalCostUSD;
-    if (o.type !== "assistant" || !Array.isArray(o.message?.content)) continue;
     const ts = Date.parse(o.timestamp ?? "") || 0;
     if (ts && ts < sinceMs) continue;
+    // What the model read: the prompt, and what each tool returned.
+    if (o.type === "user" && o.message) {
+      const text = (where, t) => ({ kind: "text", harness: "Claude Code", session: session ?? path, ts, where, text: t });
+      const content = o.message.content;
+      if (typeof content === "string") yield text("a prompt", content);
+      else if (Array.isArray(content)) {
+        for (const b of content) {
+          if (b?.type === "text" && typeof b.text === "string") yield text("a prompt", b.text);
+          else if (b?.type === "tool_result") {
+            if (typeof b.content === "string") yield text("tool output", b.content);
+            else if (Array.isArray(b.content)) {
+              for (const part of b.content) if (part?.type === "text" && typeof part.text === "string") yield text("tool output", part.text);
+            }
+          }
+        }
+      }
+      continue;
+    }
+    if (o.type !== "assistant" || !Array.isArray(o.message?.content)) continue;
     for (const b of o.message.content) {
       if (b?.type !== "tool_use") continue;
       yield { kind: "call", harness: "Claude Code", session: session ?? path, cwd, ts, tool: String(b.name ?? ""), input: b.input ?? {}, subagent: Boolean(sub) || o.isSidechain === true };

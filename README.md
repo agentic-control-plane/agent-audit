@@ -2,11 +2,19 @@
 
 What did your coding agents actually do?
 
+Paste this into Claude Code or Codex:
+
+```text
+Run `npx agent-audit` and walk me through what it found.
+```
+
+Or run it yourself:
+
 ```bash
 npx agent-audit
 ```
 
-One command reads the session logs Claude Code and Codex already keep on your machine, and reports the calls you'd want to know about:
+It reads the session logs Claude Code and Codex already keep on your machine, and reports the calls you'd want to know about:
 
 ```text
   What your coding agents did in the last 30 days
@@ -19,6 +27,9 @@ One command reads the session logs Claude Code and Codex already keep on your ma
   ✗ Live secrets in tool calls           1 in 1 session
       2026-10-29 Codex: GitHub token
         curl -H "Authorization: token [GitHub token]" https://api.github.com/…
+  ! Personal data the model read         6 in 2 sessions
+      2026-10-30 Claude Code: card number in tool output
+        Visa card ending 8431
   ! Credential files read                14 in 9 sessions
   ! Your email sent to a site            2 in 1 session
   ✓ Local data sent out                  none
@@ -29,7 +40,9 @@ One command reads the session logs Claude Code and Codex already keep on your ma
 
 *(Illustrative output.)*
 
-It's read-only. It makes no network calls, needs no account and installs no hooks. Nothing leaves your machine.
+It's read-only. It makes no network calls, needs no account and installs no hooks. Nothing leaves your machine. It has no dependencies and needs Node 18 or later.
+
+No npm? Clone the repo and run `node bin/agent-audit.mjs`. There is no install step.
 
 ## What it looks for
 
@@ -38,6 +51,7 @@ It's read-only. It makes no network calls, needs no account and installs no hook
 | Catastrophic commands | `rm -rf` on `/`, `~` or `.`, `mkfs`, raw disk writes |
 | Destructive commands | force-push, `DROP TABLE` / `TRUNCATE` / `DELETE` without `WHERE`, `curl … \| sh`, a recursive delete outside the project |
 | Live secrets in tool calls | an API key or token passed in a command or tool input |
+| Personal data the model read | a card number, a US Social Security number or someone else's email address in a prompt or in what a tool returned |
 | Credential files read | `.env`, SSH keys, `~/.aws/credentials`, `.npmrc`, keychain reads |
 | Local data sent out | `curl -d @file`, uploads, `scp` / `rsync` to a remote |
 | Your email sent to a site | your git email in a User-Agent, From header or contact field |
@@ -47,6 +61,14 @@ It's read-only. It makes no network calls, needs no account and installs no hook
 The destructive and catastrophic rules are the same open rules [Agentic Control Plane](https://agenticcontrolplane.com) enforces before a call runs. They're vendored from [acp-install](https://github.com/agentic-control-plane/acp-install). A finding here is a call that check would have held for your approval.
 
 It skips text that's only written, searched for or described, not run. That covers a `curl | sh` inside an issue body, a `grep` for `git push --force`, a heredoc writing a test file, or a commit message. A heredoc fed to a shell or a SQL client is still checked. Placeholder keys like `sk-test-xxxx` aren't reported.
+
+Personal data is counted once per distinct value, however many times the model read it. Your own git email, role addresses like `support@` and `noreply@`, test card numbers and example values aren't counted. An SSN-shaped number is only counted when a nearby word says what it is. Phone numbers and street addresses aren't detected.
+
+## Running it from an agent
+
+When a coding agent runs the audit, the agent is the reader. Inside Claude Code the report ends with a few plain notes for it: what to lead with, that the commands shown already ran and shouldn't be run again, and that the examples are redacted on purpose. Pass `--agent` to get the same notes anywhere else.
+
+The agent only ever sees the redacted report. Personal data is shown as `d***@gmail.com`, `Visa card ending 8431` or `***-**-****`, with or without `--raw`.
 
 ## Options
 
@@ -58,6 +80,7 @@ It skips text that's only written, searched for or described, not run. That cove
 --json           print the summary as JSON
 --examples N     examples per finding (default 3)
 --raw            show examples unredacted (local only; don't screenshot)
+--agent          add short notes for a coding agent relaying the report
 ```
 
 ## Privacy
@@ -68,7 +91,8 @@ It skips text that's only written, searched for or described, not run. That cove
   - Email addresses become `[email]`, usernames become `[user]`, and home paths become `~`.
   - Intranet and `.local` hostnames are never listed.
 - The HTML export is always redacted.
-- `--raw` prints full commands to your own terminal only.
+- `--raw` prints full commands to your own terminal only. If an agent runs it, those commands go to the model, so leave it off there.
+- Personal data is never printed in full, even with `--raw`.
 - Redaction is pattern-based, so glance over a report before you post it.
 
 ## Coverage

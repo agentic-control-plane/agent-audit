@@ -11,6 +11,7 @@ export const CATEGORIES = [
   { id: "catastrophic", title: "Catastrophic commands", severity: 3, blurb: "rm -rf on /, ~ or ., mkfs, raw disk writes" },
   { id: "destructive", title: "Destructive commands", severity: 3, blurb: "force-push, destructive SQL, curl | sh, recursive delete outside the project" },
   { id: "secret-in-args", title: "Live secrets in tool calls", severity: 3, blurb: "a real-looking key or token passed in a command or tool input" },
+  { id: "pii", title: "Personal data the model read", severity: 2, blurb: "card numbers, US Social Security numbers and other people's email addresses in prompts and tool output" },
   { id: "credential-read", title: "Credential files read", severity: 2, blurb: ".env, SSH keys, cloud and registry credentials" },
   { id: "upload", title: "Local data sent out", severity: 2, blurb: "a file or body uploaded to a host outside your machine" },
   { id: "identity", title: "Your email sent to a site", severity: 2, blurb: "your address in a User-Agent, From header or contact field" },

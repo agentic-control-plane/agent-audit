@@ -72,6 +72,22 @@ export async function* readCodex(path, sinceMs) {
     const ts = Date.parse(o.timestamp ?? "") || 0;
     if (ts && ts < sinceMs) continue;
     const workdir = (a) => (a && typeof a.workdir === "string" ? a.workdir : undefined);
+    // What the model read: the prompt, and what each tool returned.
+    const text = (where, t) => ({ kind: "text", harness: "Codex", session: session ?? path, ts, where, text: t });
+    if (p.type === "message" && p.role === "user" && Array.isArray(p.content)) {
+      for (const part of p.content) if (typeof part?.text === "string") yield text("a prompt", part.text);
+      continue;
+    }
+    if (p.type === "function_call_output" || p.type === "custom_tool_call_output" || p.type === "local_shell_call_output") {
+      const o2 = p.output;
+      if (typeof o2 === "string") yield text("tool output", o2);
+      else if (o2 && typeof o2 === "object") {
+        if (typeof o2.content === "string") yield text("tool output", o2.content);
+        else if (Array.isArray(o2.content)) for (const part of o2.content) if (typeof part?.text === "string") yield text("tool output", part.text);
+        else if (Array.isArray(o2)) for (const part of o2) if (typeof part?.text === "string") yield text("tool output", part.text);
+      }
+      continue;
+    }
     if (p.type === "function_call") {
       const a = parseJson(p.arguments) ?? {};
       const name = String(p.name ?? "");
