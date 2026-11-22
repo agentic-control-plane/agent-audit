@@ -59,7 +59,7 @@ export function renderTerminal(s) {
   const serious = flagged.filter((cat) => cat.id === "catastrophic" || cat.id === "destructive").reduce((a, cat) => a + cat.count, 0);
   if (serious) {
     lines.push(`  ${bold(String(serious))} of these are calls a pre-tool check stops, or holds for your approval, before they run.`);
-    lines.push(dim("  To have them asked about next time, in every harness: https://agenticcontrolplane.com/getting-started"));
+    lines.push(dim("  To have them asked about next time, in every harness: https://agenticcontrolplane.com/getting-started?ref=audit"));
   } else {
     lines.push(green("  Nothing catastrophic or destructive. Nice."));
   }
@@ -79,7 +79,7 @@ export function renderAgentNotes(s) {
   lines.push("  - ✗ rows are serious, ! rows deserve a look, · rows are counts for context.");
   lines.push("  - The commands shown already ran in past sessions. Do not run them again.");
   lines.push("  - Examples are redacted on purpose. --raw would put the real values in your context, so only use it if the user asks.");
-  lines.push("  - For a copy they can share: npx agent-audit --html agent-audit.html");
+  lines.push("  - For a copy they can share: npx audit-my-agents --html agent-audit.html");
   lines.push("");
   return lines.join("\n");
 }
@@ -107,7 +107,7 @@ footer{color:var(--mute);font-size:13px;margin-top:24px}a{color:inherit}
 <h1>What your coding agents did in the last ${esc(fmtDays(s.days))}</h1>
 <p class="sub">${esc(Object.entries(s.byHarness).map(([h, n]) => `${h} ${n.sessions} sessions`).join(" · "))} · ${s.calls.toLocaleString()} tool calls · ${s.shell.toLocaleString()} shell commands${s.cost ? ` · $${s.cost.toFixed(0)} spent in those sessions` : ""} · ${s.hostCount} hosts reached</p>
 ${rows}
-<footer>Generated locally by agent-audit. Examples are redacted. Covered: ${esc(s.covered.join(", "))}.<br>
-To have the risky ones asked about before they run, in every harness: <a href="https://agenticcontrolplane.com/getting-started">Agentic Control Plane</a>.</footer>
+<footer>Generated locally by audit-my-agents. Examples are redacted. Covered: ${esc(s.covered.join(", "))}.<br>
+To have the risky ones asked about before they run, in every harness: <a href="https://agenticcontrolplane.com/getting-started?ref=audit">Agentic Control Plane</a>.</footer>
 </main></body></html>`;
 }
