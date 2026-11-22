@@ -25,6 +25,9 @@ function gitEmail(home) {
   return null;
 }
 
+/** Distinct personal-data values kept per scan. */
+const MAX_PII = 10_000;
+
 export async function scan({ home = homedir(), days = 30, harnesses = Object.keys(SOURCES), emails = [] } = {}) {
   const sinceMs = Date.now() - days * 86_400_000;
   const allEmails = [...emails];
@@ -60,7 +63,7 @@ export async function scan({ home = homedir(), days = 30, harnesses = Object.key
           if (ev.kind === "text") {
             for (const p of piiIn(ev.text, own)) {
               // One finding per distinct value, however often it was read.
-              if (seenPii.has(p.key)) continue;
+              if (seenPii.has(p.key) || seenPii.size >= MAX_PII) continue;
               seenPii.add(p.key);
               findings.push({ category: "pii", why: `${p.label} in ${ev.where}`, example: p.masked, rank: p.rank, harness: ev.harness, session: ev.session, ts: ev.ts });
             }

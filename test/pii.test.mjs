@@ -24,7 +24,7 @@ const VISA = card("4539", 16);
 const AMEX = card("3714", 15);
 const OWN = at("pat.example", "mailbox.test");
 const OTHER = at("dana.whitfield", "gmail.com");
-const WORK = at("sam", "northwind-traders.io");
+const WORK = at("sam", "harborlight-studio.io");
 const SSN = ["512", "44", "9031"].join("-");
 
 const types = (text, own) => piiIn(text, own).map((p) => p.type);
@@ -46,7 +46,10 @@ test("the masked form never contains the value", () => {
     assert.ok(!p.masked.includes(value.split("@")[0]));
   }
   assert.equal(piiIn(`mail ${OTHER}`)[0].masked, "d***@gmail.com");
-  assert.equal(piiIn(`mail ${WORK}`)[0].masked, "s***@n***.io");
+  assert.equal(piiIn(`mail ${WORK}`)[0].masked, "s***@h***.io");
+  // A short name or domain would be given away by its first letter.
+  assert.equal(piiIn(`mail ${at("al", "gmail.com")}`)[0].masked, "***@gmail.com");
+  assert.equal(piiIn(`mail ${at("kim", "qz.co")}`)[0].masked, "k***@***.co");
   assert.equal(piiIn(`card ${VISA}`)[0].masked, `Visa card ending ${VISA.slice(-4)}`);
   assert.equal(piiIn(`ssn ${SSN}`)[0].masked, "***-**-****");
 });
@@ -75,7 +78,31 @@ test("precision: things that only look like personal data", () => {
     "123-45-6789",
     `range ${SSN}`,
     "phone 555-01-2345",
+    // Logins, not addresses.
+    "https://" + at("token123", "github.com") + "/acme/repo.git",
+    "https://user:" + at("hunter2", "host.com") + "/",
+    "ssh -i k.pem " + at("ec2-user", "ec2-1-2-3-4.compute-1.amazonaws.com"),
+    "ssh " + at("dana", "build.harborlight.io") + " uptime",
+    // Project metadata.
+    "Author: Dana Whitfield <" + OTHER + ">",
+    "Signed-off-by: Dana <" + OTHER + ">",
+    '"author": "Dana Whitfield <' + OTHER + '>"',
+    // Fixture and placeholder domains.
+    at("dana", "x.com"), at("dana", "acme-corp.dev"), at("dana", "corp.com"), at("dana", "mailinator.com"),
+    at("ops", "harborlight.io"),
+    // Published test cards, and a bare digit run with no card word near it.
+    "card 4000002500003155", "card 4009348888881881", "card 5454545454545454", "card 6011016011016011",
+    `id ${VISA}`,
+    `{"order_id": ${VISA}, "total": 12}`,
+    `stripe test card ${VISA.replace(/(\d{4})(?=\d)/g, "$1 ")}`,
   ]) assert.deepEqual(types(text), [], text);
+});
+
+test("escaped tool output: a literal \\n before a value does not hide or distort it", () => {
+  assert.deepEqual(types(`name\\ncard ${VISA}`), ["card"]);
+  assert.deepEqual(types(`x\\nssn: ${SSN}`), ["ssn"]);
+  assert.deepEqual(piiIn(`a\\n${OTHER}\\tb`).map((p) => p.key), [`email:${OTHER}`]);
+  assert.deepEqual(types("x\\n" + at("info", "harborlight.io")), []);
 });
 
 function home() {
@@ -96,7 +123,10 @@ function home() {
   writeFileSync(join(xdir, "rollout-1.jsonl"), [
     cx("session_meta", { session_id: "c1", cwd: "/work/api" }),
     cx("response_item", { type: "function_call", name: "shell_command", arguments: JSON.stringify({ command: "cat users.json" }) }),
-    cx("response_item", { type: "function_call_output", output: `{"email":"${at("lee.okafor", "yahoo.com")}"}` }),
+    // The three shapes Codex writes: a JSON string wrapping the text, an array of parts, a plain string.
+    cx("response_item", { type: "function_call_output", output: JSON.stringify({ output: `id,email\n7,${at("lee.okafor", "yahoo.com")}\n`, metadata: { exit_code: 0 } }) }),
+    cx("response_item", { type: "custom_tool_call_output", output: [{ type: "input_text", text: `to: ${at("mira.castellan", "outlook.com")}` }] }),
+    cx("response_item", { type: "message", role: "user", content: [{ type: "input_text", text: `ask ${at("lee.okafor", "yahoo.com")} again` }] }),
   ].join("\n") + "\n");
   return h;
 }
@@ -106,14 +136,14 @@ test("scan: counts each distinct value once and reports only masked text", async
   const result = await scan({ home: h, days: 30 });
   const s = summarise(result, { examples: 10 });
   const pii = s.categories.find((c) => c.id === "pii");
-  assert.equal(pii.count, 5); // card, SSN, two Claude Code emails, one Codex email; own address and the repeat are not counted
+  assert.equal(pii.count, 6); // card, SSN, two Claude Code emails, two Codex emails; own address and repeats are not counted
   assert.equal(pii.sessions, 2);
   assert.match(pii.examples[0].text, /card ending|\*\*\*-\*\*-\*\*\*\*/); // worst first
   assert.ok(pii.examples.some((e) => e.why === "card number in a prompt"));
   assert.ok(pii.examples.some((e) => e.why === "US Social Security number in tool output"));
   assert.ok(pii.examples.some((e) => e.harness === "Codex"));
   for (const out of [renderTerminal(s), renderHtml(s), JSON.stringify(s), JSON.stringify(summarise(result, { raw: true, examples: 10 }))]) {
-    for (const v of [OTHER, WORK, VISA, SSN, "dana.whitfield", "lee.okafor"]) assert.ok(!out.includes(v), `leaked ${v.slice(0, 3)}…`);
+    for (const v of [OTHER, WORK, VISA, SSN, "dana.whitfield", "lee.okafor", "mira.castellan"]) assert.ok(!out.includes(v), `leaked ${v.slice(0, 3)}…`);
   }
 });
 
@@ -124,10 +154,10 @@ test("agent notes: printed with --agent, name the top findings, never for --json
   const plain = spawnSync(process.execPath, [BIN], { env, encoding: "utf8" });
   assert.equal(plain.status, 0, plain.stderr);
   assert.doesNotMatch(plain.stdout, /Notes for an agent/);
-  assert.match(plain.stdout, /Personal data the model read\s+5/);
+  assert.match(plain.stdout, /Personal data the model read\s+6/);
   const agent = spawnSync(process.execPath, [BIN, "--agent"], { env, encoding: "utf8" });
   assert.match(agent.stdout, /Notes for an agent relaying this report/);
-  assert.match(agent.stdout, /Lead with: Personal data the model read \(5\)/);
+  assert.match(agent.stdout, /Lead with: Personal data the model read \(6\)/);
   const auto = spawnSync(process.execPath, [BIN], { env: { ...env, CLAUDECODE: "1" }, encoding: "utf8" });
   assert.match(auto.stdout, /Notes for an agent/);
   const json = spawnSync(process.execPath, [BIN, "--json", "--agent"], { env, encoding: "utf8" });

@@ -41,6 +41,24 @@ export function execCodeCommands(code) {
   return out;
 }
 
+/** The text a tool returned. `output` is a plain string, a JSON string
+ *  wrapping { output: "…" }, an object with content, or an array of parts. */
+export function outputTexts(output, depth = 0) {
+  if (typeof output === "string") {
+    if (depth < 2 && output[0] === "{") {
+      const inner = parseJson(output);
+      if (inner && typeof inner === "object") {
+        const got = outputTexts(inner.output ?? inner.content ?? inner.stdout, depth + 1);
+        if (got.length) return got;
+      }
+    }
+    return [output];
+  }
+  if (Array.isArray(output)) return output.flatMap((part) => (typeof part === "string" ? [part] : typeof part?.text === "string" ? [part.text] : []));
+  if (output && typeof output === "object") return outputTexts(output.content ?? output.output ?? output.text, depth + 1);
+  return [];
+}
+
 /** File paths touched by an apply_patch body. */
 export function patchPaths(patch) {
   const out = [];
@@ -79,13 +97,7 @@ export async function* readCodex(path, sinceMs) {
       continue;
     }
     if (p.type === "function_call_output" || p.type === "custom_tool_call_output" || p.type === "local_shell_call_output") {
-      const o2 = p.output;
-      if (typeof o2 === "string") yield text("tool output", o2);
-      else if (o2 && typeof o2 === "object") {
-        if (typeof o2.content === "string") yield text("tool output", o2.content);
-        else if (Array.isArray(o2.content)) for (const part of o2.content) if (typeof part?.text === "string") yield text("tool output", part.text);
-        else if (Array.isArray(o2)) for (const part of o2) if (typeof part?.text === "string") yield text("tool output", part.text);
-      }
+      for (const t of outputTexts(p.output)) yield text("tool output", t);
       continue;
     }
     if (p.type === "function_call") {

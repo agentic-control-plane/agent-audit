@@ -58,8 +58,9 @@ function segments(t, depth = 0) {
   const out = [];
   for (const seg of splitOutsideQuotes(t, true)) {
     out.push(seg);
-    // A quoted string handed to a shell runs: bash -c "…", ssh host "…".
-    if (depth < 2 && SHELL_RUNNERS.has(firstWord(seg))) {
+    // A quoted string handed to a shell runs: bash -c "…", ssh host "…",
+    // docker exec app sh -c "…".
+    if (depth < 2 && runsQuotedText(seg)) {
       for (const q of quotedStrings(seg)) out.push(...segments(q, depth + 1));
     }
   }
@@ -67,29 +68,45 @@ function segments(t, depth = 0) {
 }
 
 const SHELL_RUNNERS = new Set(["sh", "bash", "zsh", "dash", "ksh", "ssh", "eval", "xargs", "watch", "timeout", "su"]);
+const SHELL_DASH_C_RE = /(?:^|[\s/])(?:ba|z|da|k)?sh\s+(?:-[A-Za-z]+\s+)*-[A-Za-z]*c\b/;
+const REMOTE_RUN_RE = /(?:^|\s)(?:ssh|tmux\s+send-keys|screen\s+-\S*X)\s/;
+function runsQuotedText(seg) {
+  return SHELL_RUNNERS.has(firstWord(seg)) || SHELL_DASH_C_RE.test(seg) || REMOTE_RUN_RE.test(seg);
+}
 
 /** Split at ; && || newline (and | when asked), ignoring separators inside
- *  single or double quotes. A `|` in a grep pattern is not a pipe. */
+ *  single or double quotes. A `|` in a grep pattern is not a pipe.
+ *  Comments are dropped first, so an apostrophe in `# don't` opens nothing.
+ *  If the quotes still don't balance, the text is split the plain way: a
+ *  stray quote must never hide the command after it. */
 function splitOutsideQuotes(t, pipes) {
   const s = String(t);
   const out = [];
   let cur = "";
   let quote = "";
+  let ansi = false; // inside $'…', where backslash escapes
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
     if (quote) {
-      if (c === "\\" && quote === '"' && i + 1 < s.length) { cur += c + s[++i]; continue; }
-      if (c === quote) quote = "";
+      if (c === "\\" && (quote === '"' || ansi) && i + 1 < s.length) { cur += c + s[++i]; continue; }
+      if (c === quote) { quote = ""; ansi = false; }
       cur += c;
       continue;
     }
     if (c === "\\" && i + 1 < s.length) { cur += c + s[++i]; continue; }
-    if (c === '"' || c === "'") { quote = c; cur += c; continue; }
+    if (c === "#" && (i === 0 || /\s/.test(s[i - 1]))) {
+      const nl = s.indexOf("\n", i);
+      if (nl === -1) break;
+      i = nl - 1;
+      continue;
+    }
+    if (c === '"' || c === "'") { quote = c; ansi = c === "'" && s[i - 1] === "$"; cur += c; continue; }
     const two = s.slice(i, i + 2);
     if (two === "&&" || two === "||") { out.push(cur); cur = ""; i++; continue; }
     if (c === "\n" || c === ";" || (pipes && c === "|")) { out.push(cur); cur = ""; continue; }
     cur += c;
   }
+  if (quote) return s.split(pipes ? /\n|;|&&|\|\||\|/ : /\n|;|&&|\|\|/).map((x) => x.trim()).filter(Boolean);
   out.push(cur);
   return out.map((x) => x.trim()).filter(Boolean);
 }
@@ -120,7 +137,7 @@ function backedBySegment(reason, run) {
     return segments(run).some((seg) => firstWord(seg) === "git" && /\bpush\b/.test(seg) && /(?:\s--force(?!-with-lease|-if-includes)\b|\s-[a-eg-zA-Z]*f[a-zA-Z]*(?=\s|$)|\s\+[^\s:]+)/.test(seg));
   }
   if (/pipes a remote download/.test(reason)) {
-    const parts = splitOutsideQuotes(run, false).flatMap((p) => (SHELL_RUNNERS.has(firstWord(p)) ? [p, ...quotedStrings(p)] : [p]));
+    const parts = splitOutsideQuotes(run, false).flatMap((p) => (runsQuotedText(p) ? [p, ...quotedStrings(p)] : [p]));
     return parts.some((p) => {
       const piped = splitOutsideQuotes(p, true);
       for (let i = 0; i + 1 < piped.length; i++) {

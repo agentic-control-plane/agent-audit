@@ -62,7 +62,12 @@ The destructive and catastrophic rules are the same open rules [Agentic Control 
 
 It skips text that's only written, searched for or described, not run. That covers a `curl | sh` inside an issue body, a `grep` for `git push --force`, a heredoc writing a test file, or a commit message. A heredoc fed to a shell or a SQL client is still checked. Placeholder keys like `sk-test-xxxx` aren't reported.
 
-Personal data is counted once per distinct value, however many times the model read it. Your own git email, role addresses like `support@` and `noreply@`, test card numbers and example values aren't counted. An SSN-shaped number is only counted when a nearby word says what it is. Phone numbers and street addresses aren't detected.
+Personal data is counted once per distinct value, however many times the model read it. The rules lean toward missing something over flagging something that isn't personal:
+
+- Not counted as someone's email: your own git email, role addresses like `support@` and `noreply@`, authors in a git log or a package manifest, ssh logins, and placeholder domains like `example.com`.
+- A card number needs a real brand prefix, the right length and a valid checksum. Written without spaces, it also needs a word like "card" or "visa" nearby. Test cards published by payment providers aren't counted.
+- A Social Security number is counted only when written with dashes and a nearby word says what it is.
+- Phone numbers and street addresses aren't detected.
 
 ## Running it from an agent
 
