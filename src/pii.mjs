@@ -149,6 +149,14 @@ export function piiIn(text, own = new Set()) {
     }
   }
 
-  for (const f of out) { f.label = LABEL[f.type]; f.rank = RANK[f.type]; }
+  for (const f of out) {
+    f.label = LABEL[f.type];
+    f.rank = RANK[f.type];
+    // A personal mailbox before a work address, and both before a public office.
+    if (f.type === "email") {
+      const d = f.key.slice(f.key.indexOf("@") + 1);
+      f.rank = COMMON_MAIL.has(d) ? 2 : /\.(?:gov|mil|edu|us)$/.test(d) ? 0.5 : 1;
+    }
+  }
   return out;
 }

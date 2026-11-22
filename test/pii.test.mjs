@@ -98,6 +98,13 @@ test("precision: things that only look like personal data", () => {
   ]) assert.deepEqual(types(text), [], text);
 });
 
+test("examples: a personal mailbox sorts before a work address and a public office", () => {
+  const rank = (addr) => piiIn(`to ${addr}`)[0].rank;
+  assert.ok(rank(OTHER) > rank(WORK));
+  assert.ok(rank(WORK) > rank(at("clerk.jones", "parks.ca.gov")));
+  assert.ok(piiIn(`card ${VISA}`)[0].rank > rank(OTHER));
+});
+
 test("escaped tool output: a literal \\n before a value does not hide or distort it", () => {
   assert.deepEqual(types(`name\\ncard ${VISA}`), ["card"]);
   assert.deepEqual(types(`x\\nssn: ${SSN}`), ["ssn"]);
