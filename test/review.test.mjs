@@ -178,6 +178,16 @@ test("real-data precision: prose and searches are not findings", () => {
   assert.ok(cats("sudo -u deploy bash -lc 'cd repo && git push --force origin main'").includes("destructive"));
   // A stray quote must never hide the command after it.
   const FP = "git push --force origin main";
+  // A repository created by the same command has no shared history.
+  assert.ok(!cats(`mkdir s && cd s && git init -q -b main && git commit -q --allow-empty -m init && ${FP}`).includes("destructive"));
+  // The example is the part that matched, not the start of a long command.
+  const shown = findingsFor({ tool: "Bash", input: { command: `cd repo && npm test && ${FP} 2>&1 | tail -3` }, cwd: "/w" }, ctx).find((x) => x.category === "destructive");
+  assert.equal(shown.example, FP + " 2>&1");
+  // Code inside a sed program is not a key file; a quoted path still is.
+  assert.ok(!cats("sed -i '' 's|map((u) => u.key), x|map((u) => u.key), y|' test/a.test.mjs").includes("credential-read"));
+  assert.ok(!cats("grep -n 'opts.key)' src/a.js").includes("credential-read"));
+  assert.ok(cats("cat \"$HOME/.aws/credentials\"").includes("credential-read"));
+  assert.ok(cats("sed -n 1,5p deploy/server.key").includes("credential-read"));
   assert.ok(cats(`# don't forget\n${FP}`).includes("destructive"));
   assert.ok(cats(`bash <<EOF\n# don't\n${FP}\nEOF`).includes("destructive"));
   assert.ok(cats(`echo it's done\n${FP}`).includes("destructive"));

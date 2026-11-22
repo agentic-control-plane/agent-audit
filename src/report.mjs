@@ -37,7 +37,7 @@ export function renderTerminal(s) {
   const w = 64;
   lines.push("");
   lines.push(bold(`  What your coding agents did in the last ${fmtDays(s.days)}`));
-  const harnessLine = Object.entries(s.byHarness).map(([h, n]) => `${h} ${n.sessions} sessions`).join(" · ") || "no sessions found";
+  const harnessLine = Object.entries(s.byHarness).map(([h, n]) => `${h} ${n.sessions} session${n.sessions === 1 ? "" : "s"}`).join(" · ") || "no sessions found";
   lines.push(dim(`  ${harnessLine} · ${s.calls.toLocaleString()} tool calls · ${s.shell.toLocaleString()} shell commands${s.cost ? ` · $${s.cost.toFixed(0)} spent in those sessions` : ""}`));
   lines.push(dim(`  ${"─".repeat(w)}`));
   const flagged = s.categories.filter((cat) => cat.count > 0);
@@ -105,7 +105,7 @@ main{max-width:760px;margin:0 auto;padding:32px 16px}h1{font-size:24px;margin:0 
 footer{color:var(--mute);font-size:13px;margin-top:24px}a{color:inherit}
 </style></head><body><main>
 <h1>What your coding agents did in the last ${esc(fmtDays(s.days))}</h1>
-<p class="sub">${esc(Object.entries(s.byHarness).map(([h, n]) => `${h} ${n.sessions} sessions`).join(" · "))} · ${s.calls.toLocaleString()} tool calls · ${s.shell.toLocaleString()} shell commands${s.cost ? ` · $${s.cost.toFixed(0)} spent in those sessions` : ""} · ${s.hostCount} hosts reached</p>
+<p class="sub">${esc(Object.entries(s.byHarness).map(([h, n]) => `${h} ${n.sessions} session${n.sessions === 1 ? "" : "s"}`).join(" · "))} · ${s.calls.toLocaleString()} tool calls · ${s.shell.toLocaleString()} shell commands${s.cost ? ` · $${s.cost.toFixed(0)} spent in those sessions` : ""} · ${s.hostCount} hosts reached</p>
 ${rows}
 <footer>Generated locally by audit-my-agents. Examples are redacted. Covered: ${esc(s.covered.join(", "))}.<br>
 To have the risky ones asked about before they run, in every harness: <a href="https://agenticcontrolplane.com/getting-started?ref=audit">Agentic Control Plane</a>.</footer>

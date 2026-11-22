@@ -133,9 +133,19 @@ function firstWord(seg) {
  *  curl/wget segment piped into a shell. `grep 'git push --force'` and
  *  `echo "curl x | sh"` are not findings. */
 function backedBySegment(reason, run) {
-  if (/force-push/.test(reason)) {
-    return segments(run).some((seg) => firstWord(seg) === "git" && /\bpush\b/.test(seg) && /(?:\s--force(?!-with-lease|-if-includes)\b|\s-[a-eg-zA-Z]*f[a-zA-Z]*(?=\s|$)|\s\+[^\s:]+)/.test(seg));
-  }
+  if (/force-push/.test(reason)) return Boolean(forcePushSegment(run));
+  return backedByPipe(reason, run);
+}
+
+/** The segment that pushes with force, or null. A repository created by
+ *  the same command has no shared history to overwrite. */
+function forcePushSegment(run) {
+  const segs = segments(run);
+  if (segs.some((seg) => firstWord(seg) === "git" && /\sinit(?:\s|$)/.test(seg))) return null;
+  return segs.find((seg) => firstWord(seg) === "git" && /\bpush\b/.test(seg) && /(?:\s--force(?!-with-lease|-if-includes)\b|\s-[a-eg-zA-Z]*f[a-zA-Z]*(?=\s|$)|\s\+[^\s:]+)/.test(seg)) ?? null;
+}
+
+function backedByPipe(reason, run) {
   if (/pipes a remote download/.test(reason)) {
     const parts = splitOutsideQuotes(run, false).flatMap((p) => (runsQuotedText(p) ? [p, ...quotedStrings(p)] : [p]));
     return parts.some((p) => {
@@ -147,6 +157,12 @@ function backedBySegment(reason, run) {
     });
   }
   return true;
+}
+
+/** A segment without quoted arguments that cannot be a file path: a sed
+ *  program, an awk script or a search pattern has regex characters, and `u.key)` inside one is code, not a key file. */
+function pathArgs(seg) {
+  return seg.replace(/"((?:[^"\\]|\\.)*)"|'([^']*)'/g, (m, dq, sq) => (/[|(){}*^\\]/.test(dq ?? sq ?? "") ? '""' : m));
 }
 
 function commandOf(ev) {
@@ -188,8 +204,8 @@ export function findingsFor(ev, ctx) {
     if (hard) out.push({ category: "catastrophic", why: hard, example: cmd });
     const destr = hard ? null : destructiveFloor("Bash", runInput, { cwd: ev.cwd });
     // ACP records a variable-named rm without asking; so does this report.
-    if (destr && !/variable-named path/.test(destr) && backedBySegment(destr, run)) out.push({ category: "destructive", why: destr.replace(/:\s.*$/, ""), example: cmd });
-    if (segments(run).some((seg) => DUMP_BINS.has(firstWord(seg)) && credentialIn(` ${seg}`))) {
+    if (destr && !/variable-named path/.test(destr) && backedBySegment(destr, run)) out.push({ category: "destructive", why: destr.replace(/:\s.*$/, ""), example: (/force-push/.test(destr) && forcePushSegment(run)) || cmd });
+    if (segments(run).some((seg) => DUMP_BINS.has(firstWord(seg)) && credentialIn(` ${pathArgs(seg)}`))) {
       out.push({ category: "credential-read", why: "read a credential file in the shell", example: cmd });
     }
     if (KEYCHAIN_RE.test(run)) out.push({ category: "credential-read", why: "pulled a secret from the keychain or a cloud CLI", example: cmd });
