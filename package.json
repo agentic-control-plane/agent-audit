@@ -1,9 +1,10 @@
 {
-  "name": "agent-audit",
+  "name": "audit-my-agents",
   "version": "0.1.0",
   "description": "What did your coding agents actually do? One command reads your local Claude Code and Codex sessions and reports force-pushes, destructive commands, credential reads, leaked secrets and more.",
   "type": "module",
   "bin": {
+    "audit-my-agents": "bin/agent-audit.mjs",
     "agent-audit": "bin/agent-audit.mjs"
   },
   "files": [

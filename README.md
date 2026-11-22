@@ -1,17 +1,17 @@
-# agent-audit
+# audit-my-agents
 
 What did your coding agents actually do?
 
 Paste this into Claude Code or Codex:
 
 ```text
-Run `npx agent-audit` and walk me through what it found.
+Run `npx audit-my-agents` and walk me through what it found.
 ```
 
 Or run it yourself:
 
 ```bash
-npx agent-audit
+npx audit-my-agents
 ```
 
 It reads the session logs Claude Code and Codex already keep on your machine, and reports the calls you'd want to know about:
@@ -113,6 +113,6 @@ The session formats aren't documented by their vendors and can change. If a harn
 
 ## Next step
 
-This shows what already happened. To be asked before the next force-push, `DROP TABLE` or `curl | sh` runs, with the same rules in every harness, see [Agentic Control Plane](https://agenticcontrolplane.com/getting-started).
+This shows what already happened. To be asked before the next force-push, `DROP TABLE` or `curl | sh` runs, with the same rules in every harness, see [Agentic Control Plane](https://agenticcontrolplane.com/getting-started?ref=audit).
 
 MIT licensed.

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// agent-audit — what did your coding agents actually do?
+// audit-my-agents — what did your coding agents actually do?
 //
 // Reads the session logs Claude Code and Codex already keep on your
 // machine and reports the risky calls. Read-only. Nothing leaves your
@@ -9,9 +9,9 @@ import { writeFileSync } from "node:fs";
 import { scan, SOURCES } from "../src/scan.mjs";
 import { summarise, renderTerminal, renderHtml, renderAgentNotes } from "../src/report.mjs";
 
-const HELP = `agent-audit — what did your coding agents actually do?
+const HELP = `audit-my-agents — what did your coding agents actually do?
 
-Usage: npx agent-audit [options]
+Usage: npx audit-my-agents [options]
 
   --days N         look back N days (default 30)
   --harness NAME   only scan one harness: ${Object.keys(SOURCES).join(", ")} (repeatable)
